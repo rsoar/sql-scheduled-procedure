@@ -1,26 +1,22 @@
-CREATE PROCEDURE update_deliverable_status
-    @rowId                  int,
+CREATE PROCEDURE update_status
     @newStatus              varchar(20)
 AS
 BEGIN
-    DECLARE @lastRow        int;
-    DECLARE @currentRow     int
-
-    SELECT @lastRow = max(id) from deliverableInstance;
-    SELECT @currentRow = id from deliverableInstance where id = @rowId AND deliveryDate < GETDATE();
-    
-	IF @currentRow > 0
+    DECLARE @currentId int;
+    DECLARE late_cursor CURSOR
+        FOR SELECT id from deliverableInstance where deliveryDate < GETDATE() AND status <> @newStatus;
+    OPEN late_cursor  
+    FETCH NEXT FROM late_cursor INTO @currentId
+    WHILE @@FETCH_STATUS = 0
         BEGIN
-            UPDATE deliverableInstance SET [status] = @newStatus where id = @currentRow;
-            INSERT INTO scheduledProcedureLog (tableName, columnName, rowId, newValue)
-            VALUES('deliverableInstance', 'status', @currentRow, @newStatus);
-        END;
-    
-	IF @rowId <= @lastRow
-        BEGIN
-            SET @rowId = @rowId + 1;
-            exec update_deliverable_status @rowId = @rowId, @newStatus = @newStatus
-        END;
-END;
+            UPDATE deliverableInstance SET [status] = @newStatus where id = @currentId;
+            INSERT INTO scheduledProcedureLog (tableName, columnName, rowId, newValue, createdAt)
+            VALUES('deliverableInstance', 'status', @currentId, @newStatus, GETDATE());
+            FETCH NEXT FROM late_cursor INTO @currentId
+        END
+        CLOSE late_cursor
+        DEALLOCATE late_cursor
+END
+GO
 
-exec update_deliverable_status @rowId = 1, @newStatus = 'ATRASADO';
+EXEC update_status
